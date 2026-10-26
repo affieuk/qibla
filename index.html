@@ -13,43 +13,72 @@
   body {
     font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
     background:var(--bg); color:var(--fg);
-    display:flex; flex-direction:column; overflow:hidden;
-    padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+    overflow:hidden; position:relative;
   }
 
-  /* Map takes the top ~55% */
-  #map { flex:1 1 55%; min-height:0; width:100%; background:#111; }
+  /* Full-bleed map */
+  #map { position:absolute; inset:0; background:#111; }
 
-  /* Compass panel underneath */
-  .panel {
-    flex:0 0 auto; display:flex; flex-direction:column; align-items:center;
-    padding:16px 16px 20px; gap:12px;
-    background:linear-gradient(to top, var(--bg) 70%, transparent);
+  /* Compass HUD overlay, top-left */
+  .compass-hud {
+    position:absolute;
+    top:calc(16px + env(safe-area-inset-top));
+    left:calc(16px + env(safe-area-inset-left));
+    width:128px; height:128px;
+    z-index:5;
+    border-radius:50%;
+    background:rgba(11,11,20,0.55);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.12);
+    box-shadow:0 6px 24px rgba(0,0,0,0.45);
+    padding:8px;
+    cursor:pointer;
+    transition:transform .15s;
   }
-  .compass {
-    position:relative; width:min(42vw, 42vh, 180px); height:min(42vw, 42vh, 180px);
-  }
-  .ring,.needle { position:absolute; inset:0; border-radius:50%; }
+  .compass-hud:active { transform:scale(0.97); }
+
+  .compass { position:relative; width:100%; height:100%; }
+  .ring, .needle { position:absolute; inset:0; border-radius:50%; }
   .ring { transition:transform .15s linear; will-change:transform; }
   .ring svg, .needle svg { width:100%; height:100%; display:block; }
   .needle {
     display:flex; align-items:center; justify-content:center;
     transition:transform .15s linear; will-change:transform;
   }
-  .needle svg { filter:drop-shadow(0 0 10px rgba(240,180,41,.45)); transition:filter .3s; }
-  .aligned .needle svg { filter:drop-shadow(0 0 14px rgba(52,199,89,.85)); }
+  .needle svg { filter:drop-shadow(0 0 10px rgba(240,180,41,.5)); transition:filter .3s; }
+  .aligned .needle svg { filter:drop-shadow(0 0 14px rgba(52,199,89,.9)); }
   .needle svg .arrow-fill { transition:fill .3s; }
   .aligned .needle svg .arrow-fill { fill:var(--ok); }
 
-  .status { font-size:15px; font-weight:600; text-align:center; min-height:20px; transition:color .3s; }
+  /* Status pill at bottom */
+  .status-bar {
+    position:absolute;
+    left:50%;
+    bottom:calc(20px + env(safe-area-inset-bottom));
+    transform:translateX(-50%);
+    z-index:5;
+    background:rgba(11,11,20,0.8);
+    backdrop-filter:blur(10px);
+    -webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.1);
+    border-radius:999px;
+    padding:10px 20px;
+    text-align:center;
+    max-width:calc(100vw - 32px);
+    box-shadow:0 6px 24px rgba(0,0,0,0.4);
+  }
+  .status { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:color .3s; }
   .aligned .status { color:var(--ok); }
-  .bearing { font-size:11px; color:var(--muted); font-variant-numeric:tabular-nums; }
+  .bearing { font-size:10px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; letter-spacing:0.3px; }
 
   /* Start overlay */
   .overlay {
-    position:fixed; inset:0; z-index:20; background:rgba(11,11,20,.96);
+    position:fixed; inset:0; z-index:20;
+    background:rgba(11,11,20,0.96);
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    padding:32px; text-align:center; gap:16px; backdrop-filter:blur(8px);
+    padding:32px; text-align:center; gap:16px;
+    backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px);
   }
   .overlay h2 { font-size:20px; font-weight:600; }
   .overlay p { color:var(--muted); font-size:14px; line-height:1.5; max-width:320px; }
@@ -59,7 +88,7 @@
     transition:transform .1s;
   }
   .btn:active { transform:scale(.96); }
-  .btn.secondary { background:rgba(255,255,255,.08); color:var(--fg); }
+  .btn.secondary { background:rgba(255,255,255,0.08); color:var(--fg); }
   .hidden { display:none !important; }
   .spinner {
     width:36px; height:36px; border-radius:50%;
@@ -68,25 +97,28 @@
   }
   @keyframes spin { to { transform:rotate(360deg); } }
 </style>
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyCUdt3TLFd_ZyqqjhKfYMzRzyZqOYDTzKM&libraries=geometry&loading=async"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=YOUR_API_KEY&libraries=geometry&loading=async"></script>
 </head>
 <body>
 
 <div id="map"></div>
 
-<div class="panel" id="panel">
+<div class="compass-hud" id="compassHud" role="button" tabindex="0" aria-label="Compass — tap to retry">
   <div class="compass" id="compass">
     <div class="ring" id="ring"></div>
     <div class="needle" id="needle">
       <svg viewBox="0 0 200 200">
-        <circle cx="100" cy="100" r="92" fill="none" stroke="rgba(255,255,255,.03)" stroke-width="1"/>
-        <polygon class="arrow-fill" points="100,28 118,112 100,96 82,112" fill="#f0b429"/>
-        <polygon points="100,172 92,120 100,126 108,120" fill="rgba(255,255,255,.18)"/>
-        <circle cx="100" cy="100" r="4" fill="#f5f5f7"/>
+        <circle cx="100" cy="100" r="94" fill="none" stroke="rgba(255,255,255,0.08)" stroke-width="1"/>
+        <polygon class="arrow-fill" points="100,30 116,110 100,96 84,110" fill="#f0b429"/>
+        <polygon points="100,170 94,120 100,126 106,120" fill="rgba(255,255,255,0.22)"/>
+        <circle cx="100" cy="100" r="3.5" fill="#f5f5f7"/>
       </svg>
     </div>
   </div>
-  <div class="status" id="status">Tap Start to find the Qibla</div>
+</div>
+
+<div class="status-bar" id="statusBar">
+  <div class="status" id="status">Locating…</div>
   <div class="bearing" id="bearing"></div>
 </div>
 
@@ -95,27 +127,29 @@
   <h2 id="overlayTitle">Find the Qibla</h2>
   <p id="overlayText">We'll use your location and compass to point you toward the Kaaba.</p>
   <button class="btn" id="startBtn">Start</button>
-  <button class="btn secondary hidden" id="retryBtn">Retry</button>
 </div>
 
 <script>
 "use strict";
 
 const KAABA = { lat: 21.4224779, lon: 39.8251832 };
-const MAP_LINE_KM = 80; // how far the Qibla line is drawn on the map
+const QIBLA_LINE_KM = 12;    // length of the Qibla ray drawn on the map
+const INITIAL_ZOOM = 16;     // neighborhood-level zoom on user's position
+const MOTION_TIMEOUT_MS = 3000;
 
 const $ = id => document.getElementById(id);
-const compassEl = $("compass"), ringEl = $("ring"), needleEl = $("needle");
-const statusEl = $("status"), bearingEl = $("bearing");
+const mapEl = $("map"), compassEl = $("compass"), ringEl = $("ring"), needleEl = $("needle");
+const compassHud = $("compassHud"), statusEl = $("status"), bearingEl = $("bearing");
 const overlayEl = $("overlay"), overlayTitle = $("overlayTitle"), overlayText = $("overlayText");
-const startBtn = $("startBtn"), retryBtn = $("retryBtn"), spinnerEl = $("spinner");
+const startBtn = $("startBtn"), spinnerEl = $("spinner");
 
-let map, userMarker, qiblaLine;
+let map, userMarker, qiblaLine, userLatLng;
 let qiblaBearing = null;
 let smoothedHeading = null;
 let wasAligned = false;
 let orientationAttached = false;
 let motionReceived = false;
+let motionTimeoutHandle = null;
 
 const toRad = d => d * Math.PI / 180;
 const toDeg = r => r * 180 / Math.PI;
@@ -128,11 +162,8 @@ function calculateBearing(lat1, lon1, lat2, lon2) {
   return (toDeg(Math.atan2(y, x)) + 360) % 360;
 }
 
-/* Destination point from start + bearing + distance (km), spherical Earth */
 function destinationPoint(lat, lon, bearing, km) {
-  const R = 6371;
-  const δ = km / R;
-  const θ = toRad(bearing);
+  const R = 6371, δ = km / R, θ = toRad(bearing);
   const φ1 = toRad(lat), λ1 = toRad(lon);
   const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(θ));
   const λ2 = λ1 + Math.atan2(
@@ -157,25 +188,26 @@ function buildRing() {
   svg.setAttribute("viewBox", "0 0 200 200");
   for (let i = 0; i < 72; i++) {
     const a = toRad(i * 5), major = i % 9 === 0;
-    const r1 = 94, r2 = major ? 82 : 88;
+    const r1 = 92, r2 = major ? 80 : 86;
     const l = document.createElementNS(NS, "line");
     l.setAttribute("x1", 100 + r1 * Math.sin(a));
     l.setAttribute("y1", 100 - r1 * Math.cos(a));
     l.setAttribute("x2", 100 + r2 * Math.sin(a));
     l.setAttribute("y2", 100 - r2 * Math.cos(a));
-    l.setAttribute("stroke", major ? "rgba(255,255,255,.28)" : "rgba(255,255,255,.10)");
-    l.setAttribute("stroke-width", major ? "1.2" : "0.7");
+    l.setAttribute("stroke", major ? "rgba(255,255,255,.32)" : "rgba(255,255,255,.12)");
+    l.setAttribute("stroke-width", major ? "1.4" : "0.8");
     l.setAttribute("stroke-linecap", "round");
     svg.appendChild(l);
   }
-  [["N",100,22,"#f5f5f7"],["E",178,104,"#6e6e80"],["S",100,186,"#6e6e80"],["W",22,104,"#6e6e80"]]
+  [["N",100,26,"#f5f5f7"],["E",172,105,"#6e6e80"],["S",100,180,"#6e6e80"],["W",28,105,"#6e6e80"]]
     .forEach(([t,x,y,c]) => {
       const el = document.createElementNS(NS, "text");
       el.setAttribute("x", x); el.setAttribute("y", y);
       el.setAttribute("text-anchor", "middle");
-      el.setAttribute("font-size", "10");
+      el.setAttribute("font-size", "11");
       el.setAttribute("font-weight", "700");
       el.setAttribute("fill", c);
+      el.setAttribute("font-family", "-apple-system, system-ui, sans-serif");
       el.textContent = t;
       svg.appendChild(el);
     });
@@ -184,29 +216,45 @@ function buildRing() {
 
 /* ---------- Map ---------- */
 function initMap(lat, lon, bearing) {
+  userLatLng = { lat, lng: lon };
   const center = { lat, lng: lon };
-  map = new google.maps.Map($("map"), {
-    center, zoom: 14, disableDefaultUI: true, zoomControl: true,
+
+  map = new google.maps.Map(mapEl, {
+    center,
+    zoom: INITIAL_ZOOM,
+    disableDefaultUI: true,
+    zoomControl: false,
     gestureHandling: "greedy",
+    clickableIcons: false,
+    mapTypeControl: false,
+    streetViewControl: false,
+    fullscreenControl: false,
   });
 
   userMarker = new google.maps.Marker({
-    map, position: center, title: "You",
+    map,
+    position: center,
+    title: "You",
     icon: {
       path: google.maps.SymbolPath.CIRCLE,
-      scale: 7, fillColor: "#34c759", fillOpacity: 1,
-      strokeColor: "#fff", strokeWeight: 2,
+      scale: 7,
+      fillColor: "#34c759",
+      fillOpacity: 1,
+      strokeColor: "#fff",
+      strokeWeight: 2.5,
     },
+    zIndex: 2,
   });
 
-  const end = destinationPoint(lat, lon, bearing, MAP_LINE_KM);
+  const end = destinationPoint(lat, lon, bearing, QIBLA_LINE_KM);
   qiblaLine = new google.maps.Polyline({
-    map, path: [center, end],
-    strokeColor: "#f0b429", strokeOpacity: 0.9, strokeWeight: 5,
+    map,
+    path: [center, end],
+    strokeColor: "#f0b429",
+    strokeOpacity: 0.95,
+    strokeWeight: 4,
+    zIndex: 1,
   });
-
-  const bounds = new google.maps.LatLngBounds(center, end);
-  map.fitBounds(bounds, { top: 40, right: 40, bottom: 40, left: 40 });
 }
 
 /* ---------- Orientation ---------- */
@@ -219,7 +267,11 @@ function handleOrientation(e) {
     h = (360 - e.alpha) % 360;
   }
   if (h === null) return;
-  motionReceived = true;
+
+  if (!motionReceived) {
+    motionReceived = true;
+    if (motionTimeoutHandle) { clearTimeout(motionTimeoutHandle); motionTimeoutHandle = null; }
+  }
   smoothedHeading = smoothHeading(h);
   render();
 }
@@ -236,9 +288,10 @@ function attachOrientation() {
   }, true);
 }
 
-/* ---------- Render compass ---------- */
+/* ---------- Render compass + status ---------- */
 function render() {
   if (smoothedHeading === null || qiblaBearing === null) return;
+
   const needleAngle = qiblaBearing - smoothedHeading;
   needleEl.style.transform = `rotate(${needleAngle}deg)`;
   ringEl.style.transform = `rotate(${-smoothedHeading}deg)`;
@@ -249,7 +302,7 @@ function render() {
   document.body.classList.toggle("aligned", aligned);
 
   statusEl.textContent = aligned
-    ? "You're facing the Qibla"
+    ? "You're facing the Qibla ✓"
     : `Turn ${signed > 0 ? "right" : "left"} ${Math.round(Math.abs(signed))}°`;
   bearingEl.textContent = `Qibla ${qiblaBearing.toFixed(0)}° · Heading ${smoothedHeading.toFixed(0)}°`;
 
@@ -257,13 +310,21 @@ function render() {
   wasAligned = aligned;
 }
 
+/* ---------- Static fallback when compass is unavailable ---------- */
+function compassUnavailable(reason) {
+  needleEl.style.opacity = "0.25";
+  ringEl.style.opacity = "0.25";
+  statusEl.textContent = `Compass unavailable · Qibla ${qiblaBearing.toFixed(0)}° N`;
+  bearingEl.textContent = reason || "Tap the compass to retry";
+}
+
 /* ---------- Overlay ---------- */
-function showOverlay(title, text, spinning = false, action = null) {
+function showOverlay(title, text, spinning = false, actionLabel = null) {
   overlayTitle.textContent = title;
   overlayText.textContent = text;
   spinnerEl.classList.toggle("hidden", !spinning);
-  startBtn.classList.toggle("hidden", !!action);
-  if (action) startBtn.textContent = action;
+  startBtn.classList.toggle("hidden", !actionLabel);
+  if (actionLabel) startBtn.textContent = actionLabel;
   overlayEl.classList.remove("hidden");
 }
 function hideOverlay() { overlayEl.classList.add("hidden"); }
@@ -289,43 +350,21 @@ async function start() {
         console.warn("Map failed:", e);
       }
 
-      // Try compass — this is the gesture window the browser needs
-      if (typeof DeviceOrientationEvent !== "undefined" &&
-          typeof DeviceOrientationEvent.requestPermission === "function") {
-        try {
-          const res = await DeviceOrientationEvent.requestPermission();
-          if (res === "granted") {
-            attachOrientation();
-          } else {
-            // Permission denied — static fallback
-            needleEl.style.transform = `rotate(${qiblaBearing}deg)`;
-            statusEl.textContent = `Compass blocked. Qibla is ${qiblaBearing.toFixed(0)}° from North.`;
-            bearingEl.textContent = `Qibla ${qiblaBearing.toFixed(0)}°`;
-            hideOverlay();
-            return;
-          }
-        } catch (e) {
-          needleEl.style.transform = `rotate(${qiblaBearing}deg)`;
-          statusEl.textContent = `Compass unavailable. Qibla is ${qiblaBearing.toFixed(0)}° from North.`;
-          hideOverlay();
-          return;
-        }
-      } else {
-        attachOrientation();
-      }
+      // Try compass within the same user gesture
+      await requestCompass();
 
       hideOverlay();
 
-      // If no motion data arrives within 1.5s, it's almost certainly Brave
-      setTimeout(() => {
-        if (!motionReceived) {
-          needleEl.style.transform = `rotate(${qiblaBearing}deg)`;
-          statusEl.textContent =
-            `Compass blocked by browser. Qibla is ${qiblaBearing.toFixed(0)}° from North.`;
-          bearingEl.textContent = `Qibla ${qiblaBearing.toFixed(0)}°`;
-          showBraveHint();
-        }
-      }, 1500);
+      if (motionReceived) {
+        statusEl.textContent = "Hold phone flat to aim";
+      } else {
+        // Start the "no data yet" clock
+        motionTimeoutHandle = setTimeout(() => {
+          if (!motionReceived) {
+            compassUnavailable("Brave? Enable Motion Sensors in site settings");
+          }
+        }, MOTION_TIMEOUT_MS);
+      }
     },
     err => {
       const msg = err.code === err.PERMISSION_DENIED
@@ -338,23 +377,66 @@ async function start() {
   );
 }
 
-function showBraveHint() {
-  overlayTitle.textContent = "Compass blocked";
-  overlayText.innerHTML =
-    "Your browser is blocking motion sensors. In <b>Brave</b>, open Settings → Site settings → Motion sensors and set this site to <b>Allow</b>, then reload. The map line still shows the Qibla direction.";
-  spinnerEl.classList.add("hidden");
-  startBtn.classList.add("hidden");
-  retryBtn.classList.remove("hidden");
-  retryBtn.onclick = () => location.reload();
-  overlayEl.classList.remove("hidden");
+async function requestCompass() {
+  if (typeof DeviceOrientationEvent === "undefined") {
+    compassUnavailable("No motion sensor API");
+    return;
+  }
+  // iOS-style explicit permission
+  if (typeof DeviceOrientationEvent.requestPermission === "function") {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res === "granted") {
+        attachOrientation();
+      } else {
+        compassUnavailable("Motion permission denied");
+      }
+    } catch (e) {
+      compassUnavailable("Motion permission error");
+    }
+    return;
+  }
+  // Android / desktop: attach; if nothing fires, we detect after timeout
+  attachOrientation();
 }
+
+/* ---------- Tap compass HUD to retry ---------- */
+compassHud.addEventListener("click", async () => {
+  if (qiblaBearing === null) return;
+  motionReceived = false;
+  needleEl.style.opacity = "1";
+  ringEl.style.opacity = "1";
+  if (typeof DeviceOrientationEvent !== "undefined" &&
+      typeof DeviceOrientationEvent.requestPermission === "function") {
+    try {
+      const res = await DeviceOrientationEvent.requestPermission();
+      if (res !== "granted") { compassUnavailable("Motion permission denied"); return; }
+    } catch { compassUnavailable("Motion permission error"); return; }
+  }
+  attachOrientation();
+  motionTimeoutHandle = setTimeout(() => {
+    if (!motionReceived) compassUnavailable("Still no motion data — check browser settings");
+  }, MOTION_TIMEOUT_MS);
+});
 
 /* ---------- Boot ---------- */
 buildRing();
 startBtn.onclick = start;
 
+/* ---------- Service worker + auto-reload on update ---------- */
 if ("serviceWorker" in navigator) {
-  window.addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+  // Reload once when a new SW takes over (so users see fresh HTML automatically)
+  let refreshing = false;
+  if (navigator.serviceWorker.controller) {
+    navigator.serviceWorker.addEventListener("controllerchange", () => {
+      if (refreshing) return;
+      refreshing = true;
+      window.location.reload();
+    });
+  }
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("./sw.js").catch(() => {});
+  });
 }
 </script>
 </body>
