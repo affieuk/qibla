@@ -1,4 +1,4 @@
-const CACHE = "qibla-v3";
+const CACHE = "qibla-v5";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", e => {
@@ -18,7 +18,6 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
 
-  // Only handle same-origin. Let Google Maps, fonts, etc. go straight to network.
   const url = new URL(e.request.url);
   if (url.origin !== self.location.origin) return;
 

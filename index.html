@@ -47,7 +47,6 @@
   .needle svg .arrow-fill { transition:fill .3s; }
   .aligned .needle svg .arrow-fill { fill:var(--ok); }
 
-  /* Bottom status bar — normal aim feedback */
   .status-bar {
     position:absolute; left:50%;
     bottom:calc(20px + env(safe-area-inset-bottom));
@@ -68,54 +67,53 @@
     position:fixed;
     top:50%; left:50%;
     transform:translate(-50%, -50%);
-    z-index:15;
-    background:rgba(17,17,30,0.97);
-    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
-    border:2px solid rgba(240,180,41,0.7);
-    border-radius:22px;
-    padding:26px 28px 22px;
+    z-index:9999;
+    background:#0d0d18;
+    border:2px solid #f0b429;
+    border-radius:24px;
+    padding:32px 26px 26px;
     text-align:center;
-    width:min(320px, calc(100vw - 48px));
+    width:min(330px, calc(100vw - 48px));
     box-shadow:
-      0 16px 56px rgba(0,0,0,0.8),
-      0 0 0 1px rgba(240,180,41,0.15),
-      0 0 32px rgba(240,180,41,0.2);
+      0 20px 60px rgba(0,0,0,0.9),
+      0 0 0 6px rgba(240,180,41,0.12),
+      0 0 60px rgba(240,180,41,0.35);
     animation:promptPulse 2s ease-in-out infinite;
     cursor:pointer;
   }
   @keyframes promptPulse {
     0%,100% {
       box-shadow:
-        0 16px 56px rgba(0,0,0,0.8),
-        0 0 0 1px rgba(240,180,41,0.15),
-        0 0 32px rgba(240,180,41,0.2);
+        0 20px 60px rgba(0,0,0,0.9),
+        0 0 0 6px rgba(240,180,41,0.12),
+        0 0 60px rgba(240,180,41,0.3);
     }
     50% {
       box-shadow:
-        0 16px 56px rgba(0,0,0,0.8),
-        0 0 0 3px rgba(240,180,41,0.4),
-        0 0 44px rgba(240,180,41,0.4);
+        0 20px 60px rgba(0,0,0,0.9),
+        0 0 0 6px rgba(240,180,41,0.3),
+        0 0 80px rgba(240,180,41,0.55);
     }
   }
   .compass-prompt-icon {
-    width:52px; height:52px;
-    margin:0 auto 14px;
-    color:var(--accent);
-    filter:drop-shadow(0 0 12px rgba(240,180,41,0.5));
+    width:64px; height:64px;
+    margin:0 auto 18px;
+    color:#f0b429;
+    filter:drop-shadow(0 0 16px rgba(240,180,41,0.6));
   }
   .compass-prompt-icon svg { width:100%; height:100%; display:block; }
   .compass-prompt-title {
-    font-size:18px;
-    font-weight:700;
+    font-size:22px;
+    font-weight:800;
     color:#ffffff;
-    line-height:1.3;
-    margin-bottom:8px;
-    letter-spacing:-0.2px;
+    line-height:1.25;
+    margin-bottom:10px;
+    letter-spacing:-0.3px;
   }
   .compass-prompt-sub {
-    font-size:13px;
-    color:rgba(255,255,255,0.72);
-    line-height:1.45;
+    font-size:14px;
+    color:rgba(255,255,255,0.75);
+    line-height:1.5;
     font-weight:500;
   }
 
@@ -170,10 +168,11 @@
 
 <div class="compass-prompt hidden" id="compassPrompt">
   <div class="compass-prompt-icon">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-      <circle cx="12" cy="12" r="9"/>
-      <polygon points="12,5 14.5,12 12,10.5 9.5,12" fill="currentColor" stroke="none"/>
-      <polygon points="12,19 9.5,12 12,13.5 14.5,12" fill="currentColor" stroke="none" opacity="0.35"/>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9.5"/>
+      <polygon points="12,4 15,12 12,10.5 9,12" fill="currentColor" stroke="none"/>
+      <polygon points="12,20 9,12 12,13.5 15,12" fill="currentColor" stroke="none" opacity="0.3"/>
+      <circle cx="12" cy="12" r="0.9" fill="currentColor" stroke="none"/>
     </svg>
   </div>
   <div class="compass-prompt-title" id="compassPromptTitle">Tap anywhere to start compass</div>
@@ -190,6 +189,8 @@
 <script>
 "use strict";
 
+console.log("%c[qibla] build v5 loaded — centered compass prompt", "color:#f0b429;font-weight:bold;font-size:13px");
+
 /* ---------- Config ---------- */
 const KAABA = { lat: 21.4224779, lon: 39.8251832 };
 const QIBLA_LINE_KM = 12;
@@ -200,6 +201,7 @@ const MAP_ID = "a035d3557405687cdfe420bb";
 const $ = id => document.getElementById(id);
 const mapEl = $("map"), compassEl = $("compass"), ringEl = $("ring"), needleEl = $("needle");
 const compassHud = $("compassHud"), statusEl = $("status"), bearingEl = $("bearing");
+const statusBar = $("statusBar");
 const overlayEl = $("overlay"), overlayTitle = $("overlayTitle"), overlayText = $("overlayText");
 const startBtn = $("startBtn"), spinnerEl = $("spinner");
 const compassPrompt = $("compassPrompt");
@@ -215,7 +217,6 @@ let wasAligned = false;
 let orientationAttached = false;
 let motionReceived = false;
 let absListener = null, relListener = null;
-let retryCount = 0;
 
 const toRad = d => d * Math.PI / 180;
 const toDeg = r => r * 180 / Math.PI;
@@ -303,9 +304,6 @@ function initMap(lat, lon, bearing) {
   map.addListener("projection_changed", () => {
     const rt = map.getRenderingType ? map.getRenderingType() : "unknown";
     console.log("[qibla] Map rendering type:", rt);
-    if (rt !== "VECTOR") {
-      console.warn("[qibla] Map is NOT vector. setHeading() will not work. Check Map ID type in Cloud Console.");
-    }
   });
 
   const dot = document.createElement("div");
@@ -408,9 +406,11 @@ function showCompassPrompt(isRetry = false) {
     ? "Still waiting for motion data — one more tap often does it"
     : "Your browser needs one tap to enable motion sensors";
   compassPrompt.classList.remove("hidden");
+  statusBar.classList.add("hidden");
 }
 function hideCompassPrompt() {
   compassPrompt.classList.add("hidden");
+  statusBar.classList.remove("hidden");
 }
 
 /* ---------- Permission helpers ---------- */
@@ -466,8 +466,6 @@ async function start() {
         initMap(lat, lon, qiblaBearing);
       } catch (e) {
         console.error("Map init failed:", e);
-        statusEl.textContent = "Map failed to load";
-        bearingEl.textContent = "Check the browser console";
       }
 
       hideOverlay();
@@ -501,11 +499,8 @@ document.addEventListener("pointerdown", async () => {
   detachOrientation();
   attachOrientation();
 
-  retryCount++;
   setTimeout(() => {
-    if (!motionReceived) {
-      showCompassPrompt(true);
-    }
+    if (!motionReceived) showCompassPrompt(true);
   }, 1500);
 }, { passive: true });
 
@@ -524,7 +519,7 @@ if ("serviceWorker" in navigator) {
     });
   }
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js").catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=5").catch(() => {});
   });
 }
 </script>
