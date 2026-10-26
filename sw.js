@@ -1,4 +1,4 @@
-const CACHE = "qibla-v2";
+const CACHE = "qibla-v3";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", e => {
@@ -18,11 +18,14 @@ self.addEventListener("activate", e => {
 self.addEventListener("fetch", e => {
   if (e.request.method !== "GET") return;
 
+  // Only handle same-origin. Let Google Maps, fonts, etc. go straight to network.
+  const url = new URL(e.request.url);
+  if (url.origin !== self.location.origin) return;
+
   const isDoc = e.request.mode === "navigate" ||
                 e.request.destination === "document";
 
   if (isDoc) {
-    // Network-first for HTML: always try fresh, fall back to cache offline
     e.respondWith(
       fetch(e.request).then(res => {
         const copy = res.clone();
@@ -35,7 +38,6 @@ self.addEventListener("fetch", e => {
     return;
   }
 
-  // Cache-first for static assets
   e.respondWith(
     caches.match(e.request).then(hit =>
       hit || fetch(e.request).then(res => {
