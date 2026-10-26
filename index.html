@@ -47,6 +47,7 @@
   .needle svg .arrow-fill { transition:fill .3s; }
   .aligned .needle svg .arrow-fill { fill:var(--ok); }
 
+  /* Bottom status bar — normal aim feedback */
   .status-bar {
     position:absolute; left:50%;
     bottom:calc(20px + env(safe-area-inset-bottom));
@@ -57,20 +58,66 @@
     border-radius:999px; padding:10px 20px;
     text-align:center; max-width:calc(100vw - 32px);
     box-shadow:0 6px 24px rgba(0,0,0,0.4);
-    transition:background .3s, border-color .3s;
-  }
-  .status-bar.prompt {
-    background:rgba(240,180,41,0.18);
-    border-color:rgba(240,180,41,0.5);
-    animation:pulse 1.6s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%,100% { box-shadow:0 6px 24px rgba(240,180,41,0.15); }
-    50%     { box-shadow:0 6px 24px rgba(240,180,41,0.5); }
   }
   .status { font-size:14px; font-weight:600; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; transition:color .3s; }
   .aligned .status { color:var(--ok); }
   .bearing { font-size:10px; color:var(--muted); margin-top:2px; font-variant-numeric:tabular-nums; letter-spacing:0.3px; }
+
+  /* Centered compass-start prompt */
+  .compass-prompt {
+    position:fixed;
+    top:50%; left:50%;
+    transform:translate(-50%, -50%);
+    z-index:15;
+    background:rgba(17,17,30,0.97);
+    backdrop-filter:blur(20px); -webkit-backdrop-filter:blur(20px);
+    border:2px solid rgba(240,180,41,0.7);
+    border-radius:22px;
+    padding:26px 28px 22px;
+    text-align:center;
+    width:min(320px, calc(100vw - 48px));
+    box-shadow:
+      0 16px 56px rgba(0,0,0,0.8),
+      0 0 0 1px rgba(240,180,41,0.15),
+      0 0 32px rgba(240,180,41,0.2);
+    animation:promptPulse 2s ease-in-out infinite;
+    cursor:pointer;
+  }
+  @keyframes promptPulse {
+    0%,100% {
+      box-shadow:
+        0 16px 56px rgba(0,0,0,0.8),
+        0 0 0 1px rgba(240,180,41,0.15),
+        0 0 32px rgba(240,180,41,0.2);
+    }
+    50% {
+      box-shadow:
+        0 16px 56px rgba(0,0,0,0.8),
+        0 0 0 3px rgba(240,180,41,0.4),
+        0 0 44px rgba(240,180,41,0.4);
+    }
+  }
+  .compass-prompt-icon {
+    width:52px; height:52px;
+    margin:0 auto 14px;
+    color:var(--accent);
+    filter:drop-shadow(0 0 12px rgba(240,180,41,0.5));
+  }
+  .compass-prompt-icon svg { width:100%; height:100%; display:block; }
+  .compass-prompt-title {
+    font-size:18px;
+    font-weight:700;
+    color:#ffffff;
+    line-height:1.3;
+    margin-bottom:8px;
+    letter-spacing:-0.2px;
+  }
+  .compass-prompt-sub {
+    font-size:13px;
+    color:rgba(255,255,255,0.72);
+    line-height:1.45;
+    font-weight:500;
+  }
 
   .overlay {
     position:fixed; inset:0; z-index:20;
@@ -121,6 +168,18 @@
   <div class="bearing" id="bearing"></div>
 </div>
 
+<div class="compass-prompt hidden" id="compassPrompt">
+  <div class="compass-prompt-icon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"/>
+      <polygon points="12,5 14.5,12 12,10.5 9.5,12" fill="currentColor" stroke="none"/>
+      <polygon points="12,19 9.5,12 12,13.5 14.5,12" fill="currentColor" stroke="none" opacity="0.35"/>
+    </svg>
+  </div>
+  <div class="compass-prompt-title" id="compassPromptTitle">Tap anywhere to start compass</div>
+  <div class="compass-prompt-sub" id="compassPromptSub">Your browser needs one tap to enable motion sensors</div>
+</div>
+
 <div class="overlay" id="overlay">
   <div class="spinner" id="spinner"></div>
   <h2 id="overlayTitle">Find the Qibla</h2>
@@ -141,9 +200,11 @@ const MAP_ID = "a035d3557405687cdfe420bb";
 const $ = id => document.getElementById(id);
 const mapEl = $("map"), compassEl = $("compass"), ringEl = $("ring"), needleEl = $("needle");
 const compassHud = $("compassHud"), statusEl = $("status"), bearingEl = $("bearing");
-const statusBar = $("statusBar");
 const overlayEl = $("overlay"), overlayTitle = $("overlayTitle"), overlayText = $("overlayText");
 const startBtn = $("startBtn"), spinnerEl = $("spinner");
+const compassPrompt = $("compassPrompt");
+const compassPromptTitle = $("compassPromptTitle");
+const compassPromptSub = $("compassPromptSub");
 
 /* ---------- State ---------- */
 let map = null, userMarker = null, qiblaLine = null, userLatLng = null;
@@ -154,6 +215,7 @@ let wasAligned = false;
 let orientationAttached = false;
 let motionReceived = false;
 let absListener = null, relListener = null;
+let retryCount = 0;
 
 const toRad = d => d * Math.PI / 180;
 const toDeg = r => r * 180 / Math.PI;
@@ -236,10 +298,8 @@ function initMap(lat, lon, bearing) {
     fullscreenControl: false,
   });
 
-  // Expose for debugging in the browser console
   window.__map = map;
 
-  // Log rendering type once projection is ready
   map.addListener("projection_changed", () => {
     const rt = map.getRenderingType ? map.getRenderingType() : "unknown";
     console.log("[qibla] Map rendering type:", rt);
@@ -275,7 +335,7 @@ function handleOrientation(e) {
 
   if (!motionReceived) {
     motionReceived = true;
-    statusBar.classList.remove("prompt");
+    hideCompassPrompt();
   }
   smoothedHeading = smoothHeading(h);
   render();
@@ -306,7 +366,6 @@ function render() {
   needleEl.style.transform = `rotate(${needleAngle}deg)`;
   ringEl.style.transform = `rotate(${-smoothedHeading}deg)`;
 
-  // Rotate map so screen-up matches the direction the phone faces
   if (map && typeof map.setHeading === "function") {
     const d = Math.abs(((smoothedHeading - lastMapHeading + 540) % 360) - 180);
     if (d > 1) {
@@ -340,6 +399,20 @@ function showOverlay(title, text, spinning = false, actionLabel = null) {
 }
 function hideOverlay() { overlayEl.classList.add("hidden"); }
 
+/* ---------- Centered compass prompt ---------- */
+function showCompassPrompt(isRetry = false) {
+  compassPromptTitle.textContent = isRetry
+    ? "Tap anywhere to retry"
+    : "Tap anywhere to start compass";
+  compassPromptSub.textContent = isRetry
+    ? "Still waiting for motion data — one more tap often does it"
+    : "Your browser needs one tap to enable motion sensors";
+  compassPrompt.classList.remove("hidden");
+}
+function hideCompassPrompt() {
+  compassPrompt.classList.add("hidden");
+}
+
 /* ---------- Permission helpers ---------- */
 async function requestMotionPermission() {
   if (typeof DeviceOrientationEvent === "undefined") return false;
@@ -349,7 +422,7 @@ async function requestMotionPermission() {
       return res === "granted";
     } catch { return false; }
   }
-  return true; // Android / desktop
+  return true;
 }
 
 function ensureMapsReady() {
@@ -369,14 +442,12 @@ function ensureMapsReady() {
 
 /* ---------- Main flow ---------- */
 async function start() {
-  // Step 1: motion permission and listeners FIRST — this uses the Start gesture
   const granted = await requestMotionPermission();
   if (granted) {
     detachOrientation();
     attachOrientation();
   }
 
-  // Step 2: location + map
   hideOverlay();
   showOverlay("Locating…", "Getting your position to draw the Qibla line.", true);
 
@@ -402,9 +473,8 @@ async function start() {
       hideOverlay();
 
       if (!motionReceived) {
-        // Compass hasn't started yet. Give it a moment, then prompt.
         setTimeout(() => {
-          if (!motionReceived) showCompassPrompt();
+          if (!motionReceived) showCompassPrompt(false);
         }, 1200);
       } else {
         statusEl.textContent = "Hold phone flat to aim";
@@ -421,13 +491,7 @@ async function start() {
   );
 }
 
-function showCompassPrompt() {
-  statusBar.classList.add("prompt");
-  statusEl.textContent = "Tap anywhere to start compass";
-  bearingEl.textContent = `Qibla ${qiblaBearing.toFixed(0)}° N`;
-}
-
-/* ---------- Global tap: activate the compass on Brave/Android ---------- */
+/* ---------- Global tap: activate compass on Brave/Android ---------- */
 document.addEventListener("pointerdown", async () => {
   if (motionReceived || qiblaBearing === null) return;
 
@@ -436,14 +500,11 @@ document.addEventListener("pointerdown", async () => {
 
   detachOrientation();
   attachOrientation();
-  statusBar.classList.add("prompt");
-  statusEl.textContent = "Starting compass…";
 
-  // If data still doesn't arrive, keep the prompt visible
+  retryCount++;
   setTimeout(() => {
     if (!motionReceived) {
-      statusEl.textContent = "Tap again to retry compass";
-      bearingEl.textContent = `Qibla ${qiblaBearing.toFixed(0)}° N`;
+      showCompassPrompt(true);
     }
   }, 1500);
 }, { passive: true });
