@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b0b14">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Qibla">
+<title>Qibla Compass</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon.svg">
+<style>
+  :root { --bg:#0b0b14; --fg:#f5f5f7; --muted:#6e6e80; --accent:#f0b429; --ok:#34c759; }
+  * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { height:100%; }
+  body { font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif; background:radial-gradient(circle at 50% 30%,#1a1a2e 0%,var(--bg) 70%); color:var(--fg); display:flex; flex-direction:column; align-items:center; justify-content:center; overflow:hidden; user-select:none; -webkit-user-select:none; padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+  .compass { position:relative; width:min(78vw,78vh,360px); height:min(78vw,78vh,360px); margin-bottom:28px; }
+  .ring,.needle { position:absolute; inset:0; border-radius:50%; }
+  .ring { transition:transform .15s linear; will-change:transform; }
+  .ring svg { width:100%; height:100%; display:block; }
+  .needle { display:flex; align-items:center; justify-content:center; transition:transform .15s linear; will-change:transform; }
+  .needle svg { width:100%; height:100%; filter:drop-shadow(0 0 16px rgba(240,180,41,.45)); transition:filter .3s; }
+  .aligned .needle svg { filter:drop-shadow(0 0 22px rgba(52,199,89,.85)); }
+  .needle svg .arrow-fill { transition:fill .3s; }
+  .aligned .needle svg .arrow-fill { fill:var(--ok); }
+  .info { text-align:center; padding:0 24px; max-width:420px; }
+  .bearing { font-size:13px; color:var(--muted); letter-spacing:.5px; margin-bottom:8px; font-variant-numeric:tabular-nums; }
+  .status { font-size:18px; font-weight:600; line-height:1.4; min-height:48px; transition:color .3s; }
+  .aligned .status { color:var(--ok); }
+  .overlay { position:fixed; inset:0; z-index:10; background:rgba(11,11,20,.95); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:32px; text-align:center; gap:18px; backdrop-filter:blur(8px); }
+  .overlay h2 { font-size:20px; font-weight:600; }
+  .overlay p { color:var(--muted); font-size:14px; line-height:1.5; max-width:320px; }
+  .btn { background:var(--accent); color:#1a1a1a; border:none; border-radius:999px; padding:14px 32px; font-size:16px; font-weight:600; cursor:pointer; transition:transform .1s,opacity .2s; }
+  .btn:active { transform:scale(.96); }
+  .btn.secondary { background:rgba(255,255,255,.08); color:var(--fg); }
+  .hidden { display:none !important; }
+  .spinner { width:40px; height:40px; border-radius:50%; border:3px solid rgba(255,255,255,.1); border-top-color:var(--accent); animation:spin .8s linear infinite; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+<div class="compass" id="compass">
+  <div class="ring" id="ring"></div>
+  <div class="needle" id="needle">
+    <svg viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="100" cy="100" r="92" fill="none" stroke="rgba(255,255,255,0.03)" stroke-width="1"/>
+      <polygon class="arrow-fill" points="100,28 118,112 100,96 82,112" fill="#f0b429"/>
+      <polygon points="100,172 92,120 100,126 108,120" fill="rgba(255,255,255,0.18)"/>
+      <circle cx="100" cy="100" r="4" fill="#f5f5f7"/>
+    </svg>
+  </div>
+</div>
+<div class="info" id="info">
+  <div class="bearing" id="bearing">Qibla: —</div>
+  <div class="status" id="status">Locating…</div>
+</div>
+<div class="overlay" id="overlay">
+  <div class="spinner" id="spinner"></div>
+  <h2 id="overlayTitle">Finding your location</h2>
+  <p id="overlayText">We need your location to calculate the Qibla direction.</p>
+  <button class="btn hidden" id="actionBtn">Enable Compass</button>
+  <button class="btn secondary hidden" id="retryBtn">Try Again</button>
+</div>
+<script>
+"use strict";
+const KAABA = { lat: 21.4224779, lon: 39.8251832 };
+const $ = id => document.getElementById(id);
+const compassEl=$("compass"), ringEl=$("ring"), needleEl=$("needle");
+const bearingEl=$("bearing"), statusEl=$("status"), overlayEl=$("overlay");
+const overlayTitle=$("overlayTitle"), overlayText=$("overlayText");
+const actionBtn=$("actionBtn"), retryBtn=$("retryBtn"), spinnerEl=$("spinner");
+let qiblaBearing=null, rawHeading=null, smoothedHeading=null, wasAligned=false, orientationAttached=false, gotAbsoluteEvent=false;
+const toRad=d=>d*Math.PI/180, toDeg=r=>r*180/Math.PI;
+function calculateBearing(lat1,lon1,lat2,lon2){
+  const φ1=toRad(lat1),φ2=toRad(lat2),Δλ=toRad(lon2-lon1);
+  const y=Math.sin(Δλ)*Math.cos(φ2);
+  const x=Math.cos(φ1)*Math.sin(φ2)-Math.sin(φ1)*Math.cos(φ2)*Math.cos(Δλ);
+  return (toDeg(Math.atan2(y,x))+360)%360;
+}
+function smoothHeading(next){
+  if(smoothedHeading===null){smoothedHeading=next;return next;}
+  let d=next-smoothedHeading;
+  if(d>180)d-=360; else if(d<-180)d+=360;
+  smoothedHeading=(smoothedHeading+d*0.30+360)%360;
+  return smoothedHeading;
+}
+function buildRing(){
+  const NS="http://www.w3.org/2000/svg";
+  const svg=document.createElementNS(NS,"svg");
+  svg.setAttribute("viewBox","0 0 200 200");
+  for(let i=0;i<72;i++){
+    const a=toRad(i*5),major=i%9===0,r1=94,r2=major?82:88;
+    const l=document.createElementNS(NS,"line");
+    l.setAttribute("x1",100+r1*Math.sin(a));l.setAttribute("y1",100-r1*Math.cos(a));
+    l.setAttribute("x2",100+r2*Math.sin(a));l.setAttribute("y2",100-r2*Math.cos(a));
+    l.setAttribute("stroke",major?"rgba(255,255,255,0.28)":"rgba(255,255,255,0.10)");
+    l.setAttribute("stroke-width",major?"1.2":"0.7");l.setAttribute("stroke-linecap","round");
+    svg.appendChild(l);
+  }
+  [{t:"N",x:100,y:22,c:"#f5f5f7"},{t:"E",x:178,y:104,c:"#6e6e80"},{t:"S",x:100,y:186,c:"#6e6e80"},{t:"W",x:22,y:104,c:"#6e6e80"}].forEach(L=>{
+    const t=document.createElementNS(NS,"text");
+    t.setAttribute("x",L.x);t.setAttribute("y",L.y);t.setAttribute("text-anchor","middle");
+    t.setAttribute("font-size","10");t.setAttribute("font-weight","700");t.setAttribute("fill",L.c);
+    t.setAttribute("font-family","-apple-system, system-ui, sans-serif");t.textContent=L.t;svg.appendChild(t);
+  });
+  ringEl.appendChild(svg);
+}
+function handleOrientation(e){
+  let h=null;
+  if(typeof e.webkitCompassHeading==="number"&&e.webkitCompassHeading>=0){h=e.webkitCompassHeading;}
+  else if((e.type==="deviceorientationabsolute"||e.absolute===true)&&typeof e.alpha==="number"&&e.alpha!==null){h=(360-e.alpha)%360;}
+  if(h===null)return;
+  rawHeading=h;smoothedHeading=smoothHeading(h);render();
+}
+function attachOrientation(){
+  if(orientationAttached)return;orientationAttached=true;
+  const onAbs=e=>{gotAbsoluteEvent=true;handleOrientation(e);};
+  const onRel=e=>{if(!gotAbsoluteEvent)handleOrientation(e);};
+  window.addEventListener("deviceorientationabsolute",onAbs,true);
+  window.addEventListener("deviceorientation",onRel,true);
+}
+function render(){
+  if(smoothedHeading===null||qiblaBearing===null)return;
+  const needleAngle=qiblaBearing-smoothedHeading;
+  const ringAngle=-smoothedHeading;
+  needleEl.style.transform=`rotate(${needleAngle}deg)`;
+  ringEl.style.transform=`rotate(${ringAngle}deg)`;
+  const signed=(((needleAngle+180)%360)+360)%360-180;
+  const aligned=Math.abs(signed)<5;
+  compassEl.classList.toggle("aligned",aligned);
+  statusEl.textContent=aligned?"You're facing the Qibla ✓":`Turn ${signed>0?"right":"left"} ${Math.round(Math.abs(signed))}°`;
+  bearingEl.textContent=`Qibla: ${qiblaBearing.toFixed(0)}°  ·  Heading: ${smoothedHeading.toFixed(0)}°`;
+  if(aligned&&!wasAligned&&navigator.vibrate)navigator.vibrate(50);
+  wasAligned=aligned;
+}
+function showOverlay(t,x,s=false,a=false,r=false){
+  overlayTitle.textContent=t;overlayText.textContent=x;
+  spinnerEl.classList.toggle("hidden",!s);
+  actionBtn.classList.toggle("hidden",!a);
+  retryBtn.classList.toggle("hidden",!r);
+  overlayEl.classList.remove("hidden");
+}
+function hideOverlay(){overlayEl.classList.add("hidden");}
+async function init(){
+  buildRing();
+  if(!navigator.geolocation){showOverlay("Not supported","Your browser doesn't support geolocation.");return;}
+  showOverlay("Finding your location","We need your location to calculate the Qibla direction.",true);
+  navigator.geolocation.getCurrentPosition(
+    pos=>{
+      qiblaBearing=calculateBearing(pos.coords.latitude,pos.coords.longitude,KAABA.lat,KAABA.lon);
+      bearingEl.textContent=`Qibla: ${qiblaBearing.toFixed(0)}°`;
+      statusEl.textContent="Waiting for compass…";
+      requestCompass();
+    },
+    err=>{
+      if(err.code===err.PERMISSION_DENIED){showOverlay("Location blocked","Enable location permission in your browser settings, then retry.",false,false,true);}
+      else{showOverlay("Location error",err.message||"Could not get your location.",false,false,true);}
+    },
+    {enableHighAccuracy:true,timeout:10000,maximumAge:60000}
+  );
+}
+async function requestCompass(){
+  if(typeof DeviceOrientationEvent==="undefined"){
+    hideOverlay();needleEl.style.transform=`rotate(${qiblaBearing}deg)`;
+    statusEl.textContent=`No compass available. Qibla is at ${qiblaBearing.toFixed(0)}° from north.`;return;
+  }
+  if(typeof DeviceOrientationEvent.requestPermission==="function"){
+    showOverlay("Enable compass","Tap below to allow orientation sensors.",false,true);
+    actionBtn.onclick=async()=>{
+      try{
+        const r=await DeviceOrientationEvent.requestPermission();
+        if(r==="granted"){attachOrientation();hideOverlay();afterAttach();}
+        else{showOverlay("Compass denied","You can re-enable it in Settings → Safari.",false,false,true);}
+      }catch(err){showOverlay("Compass error",err.message||String(err),false,false,true);}
+    };
+    return;
+  }
+  attachOrientation();hideOverlay();afterAttach();
+}
+function afterAttach(){
+  setTimeout(()=>{
+    if(smoothedHeading===null&&qiblaBearing!==null){
+      hideOverlay();needleEl.style.transform=`rotate(${qiblaBearing}deg)`;
+      statusEl.textContent=`No compass data. Qibla is at ${qiblaBearing.toFixed(0)}° from north.`;
+    }
+  },3000);
+}
+retryBtn.onclick=()=>location.reload();
+if("serviceWorker" in navigator){window.addEventListener("load",()=>{navigator.serviceWorker.register("./sw.js").catch(()=>{});});}
+init();
+</script>
+</body>
+</html>
