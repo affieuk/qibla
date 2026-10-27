@@ -1,4 +1,4 @@
-const CACHE = "qibla-v5";
+const CACHE = "qibla-v6";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon.svg"];
 
 self.addEventListener("install", e => {

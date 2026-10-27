@@ -34,6 +34,26 @@
   }
   .compass-hud:active { transform:scale(0.97); }
 
+  /* Calibrate button — top right */
+  .calibrate-btn {
+    position:absolute;
+    top:calc(16px + env(safe-area-inset-top));
+    right:calc(16px + env(safe-area-inset-right));
+    width:52px; height:52px;
+    z-index:5;
+    border-radius:50%;
+    background:rgba(11,11,20,0.65);
+    backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    border:1px solid rgba(255,255,255,0.15);
+    color:var(--fg);
+    cursor:pointer;
+    display:flex; align-items:center; justify-content:center;
+    box-shadow:0 6px 24px rgba(0,0,0,0.4);
+    transition:transform .15s, background .15s;
+  }
+  .calibrate-btn:active { transform:scale(0.94); background:rgba(240,180,41,0.2); }
+  .calibrate-btn svg { width:22px; height:22px; }
+
   .compass { position:relative; width:100%; height:100%; }
   .ring, .needle { position:absolute; inset:0; border-radius:50%; }
   .ring { transition:transform .15s linear; will-change:transform; }
@@ -103,18 +123,68 @@
   }
   .compass-prompt-icon svg { width:100%; height:100%; display:block; }
   .compass-prompt-title {
-    font-size:22px;
-    font-weight:800;
-    color:#ffffff;
-    line-height:1.25;
-    margin-bottom:10px;
-    letter-spacing:-0.3px;
+    font-size:22px; font-weight:800; color:#ffffff;
+    line-height:1.25; margin-bottom:10px; letter-spacing:-0.3px;
   }
   .compass-prompt-sub {
-    font-size:14px;
-    color:rgba(255,255,255,0.75);
-    line-height:1.5;
-    font-weight:500;
+    font-size:14px; color:rgba(255,255,255,0.75);
+    line-height:1.5; font-weight:500;
+  }
+
+  /* Calibration overlay */
+  .calibrate-overlay {
+    position:fixed; inset:0;
+    z-index:9998;
+    background:rgba(11,11,20,0.94);
+    backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px);
+    display:flex; align-items:center; justify-content:center;
+    padding:24px;
+  }
+  .calibrate-card {
+    background:#0d0d18;
+    border:2px solid rgba(240,180,41,0.6);
+    border-radius:24px;
+    padding:28px 24px 24px;
+    width:min(340px, 100%);
+    text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,0.8), 0 0 40px rgba(240,180,41,0.15);
+  }
+  .calibrate-card h2 {
+    font-size:20px; font-weight:700;
+    margin-bottom:6px; color:#fff;
+  }
+  .calibrate-instruction {
+    font-size:14px; color:rgba(255,255,255,0.75);
+    margin-bottom:18px; line-height:1.4;
+  }
+  .fig8-wrapper {
+    background:rgba(240,180,41,0.06);
+    border-radius:16px;
+    padding:16px 8px;
+    margin-bottom:16px;
+  }
+  .fig8-svg {
+    width:100%; height:auto; display:block;
+    max-height:130px;
+  }
+  .calibrate-status {
+    font-size:13px; font-weight:600;
+    color:rgba(255,255,255,0.85);
+    margin-bottom:18px;
+    min-height:40px;
+    line-height:1.4;
+    padding:8px 10px;
+    border-radius:10px;
+    transition:color .3s, background .3s;
+    display:flex; align-items:center; justify-content:center;
+  }
+  .calibrate-status.good {
+    color:#34c759;
+    background:rgba(52,199,89,0.12);
+  }
+  .calibrate-status.fair {
+    color:#f0b429;
+    background:rgba(240,180,41,0.08);
   }
 
   .overlay {
@@ -161,6 +231,13 @@
   </div>
 </div>
 
+<button class="calibrate-btn hidden" id="calibrateBtn" aria-label="Calibrate compass">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M21 12a9 9 0 1 1-3-6.7"/>
+    <polyline points="21 3 21 9 15 9"/>
+  </svg>
+</button>
+
 <div class="status-bar" id="statusBar">
   <div class="status" id="status">Locating…</div>
   <div class="bearing" id="bearing"></div>
@@ -179,6 +256,25 @@
   <div class="compass-prompt-sub" id="compassPromptSub">Your browser needs one tap to enable motion sensors</div>
 </div>
 
+<div class="calibrate-overlay hidden" id="calibrateOverlay">
+  <div class="calibrate-card">
+    <h2>Calibrate Compass</h2>
+    <p class="calibrate-instruction">Move your phone in a figure-8 pattern like this:</p>
+    <div class="fig8-wrapper">
+      <svg class="fig8-svg" viewBox="0 0 240 120" xmlns="http://www.w3.org/2000/svg">
+        <path d="M 60,60 C 60,20 100,20 120,60 C 140,100 180,100 180,60 C 180,20 140,20 120,60 C 100,100 60,100 60,60"
+              fill="none" stroke="rgba(240,180,41,0.35)" stroke-width="3" stroke-linecap="round"/>
+        <circle r="9" fill="#f0b429">
+          <animateMotion dur="3.5s" repeatCount="indefinite"
+            path="M 60,60 C 60,20 100,20 120,60 C 140,100 180,100 180,60 C 180,20 140,20 120,60 C 100,100 60,100 60,60"/>
+        </circle>
+      </svg>
+    </div>
+    <div class="calibrate-status" id="calibrateStatus">Reading compass accuracy…</div>
+    <button class="btn" id="calibrateDoneBtn">Done</button>
+  </div>
+</div>
+
 <div class="overlay" id="overlay">
   <div class="spinner" id="spinner"></div>
   <h2 id="overlayTitle">Find the Qibla</h2>
@@ -189,7 +285,7 @@
 <script>
 "use strict";
 
-console.log("%c[qibla] build v5 loaded — centered compass prompt", "color:#f0b429;font-weight:bold;font-size:13px");
+console.log("%c[qibla] build v6 loaded — calibration added", "color:#f0b429;font-weight:bold;font-size:13px");
 
 /* ---------- Config ---------- */
 const KAABA = { lat: 21.4224779, lon: 39.8251832 };
@@ -207,6 +303,10 @@ const startBtn = $("startBtn"), spinnerEl = $("spinner");
 const compassPrompt = $("compassPrompt");
 const compassPromptTitle = $("compassPromptTitle");
 const compassPromptSub = $("compassPromptSub");
+const calibrateBtn = $("calibrateBtn");
+const calibrateOverlay = $("calibrateOverlay");
+const calibrateStatusEl = $("calibrateStatus");
+const calibrateDoneBtn = $("calibrateDoneBtn");
 
 /* ---------- State ---------- */
 let map = null, userMarker = null, qiblaLine = null, userLatLng = null;
@@ -217,6 +317,10 @@ let wasAligned = false;
 let orientationAttached = false;
 let motionReceived = false;
 let absListener = null, relListener = null;
+
+let lastCompassAccuracy = null;
+let calibrateInterval = null;
+let calibrateInitialAcc = null;
 
 const toRad = d => d * Math.PI / 180;
 const toDeg = r => r * 180 / Math.PI;
@@ -322,6 +426,10 @@ function initMap(lat, lon, bearing) {
 
 /* ---------- Orientation ---------- */
 function handleOrientation(e) {
+  if (typeof e.webkitCompassAccuracy === "number") {
+    lastCompassAccuracy = e.webkitCompassAccuracy;
+  }
+
   let h = null;
   if (typeof e.webkitCompassHeading === "number" && e.webkitCompassHeading >= 0) {
     h = e.webkitCompassHeading;
@@ -413,6 +521,80 @@ function hideCompassPrompt() {
   statusBar.classList.remove("hidden");
 }
 
+/* ---------- Calibration ---------- */
+async function openCalibration() {
+  hideCompassPrompt();
+
+  // If sensors aren't running yet, try to enable them
+  if (!orientationAttached) {
+    const granted = await requestMotionPermission();
+    if (granted) {
+      detachOrientation();
+      attachOrientation();
+    }
+  }
+
+  // Reset smoothing so the reading updates immediately after calibration
+  smoothedHeading = null;
+  calibrateInitialAcc = lastCompassAccuracy;
+  lastCompassAccuracy = null;
+
+  calibrateStatusEl.className = "calibrate-status";
+  calibrateStatusEl.textContent = "Reading compass accuracy…";
+  calibrateOverlay.classList.remove("hidden");
+
+  if (calibrateInterval) clearInterval(calibrateInterval);
+  calibrateInterval = setInterval(updateCalibrateStatus, 600);
+}
+
+function closeCalibration() {
+  calibrateOverlay.classList.add("hidden");
+  if (calibrateInterval) { clearInterval(calibrateInterval); calibrateInterval = null; }
+  smoothedHeading = null; // fresh reading after calibration
+}
+
+function updateCalibrateStatus() {
+  if (lastCompassAccuracy === null) {
+    // Android / desktop: no accuracy value is exposed by the browser
+    calibrateStatusEl.className = "calibrate-status";
+    calibrateStatusEl.textContent = "Keep moving the phone in a figure-8 pattern, then tap Done";
+    return;
+  }
+
+  const acc = lastCompassAccuracy;
+
+  if (acc < 0) {
+    calibrateStatusEl.className = "calibrate-status";
+    calibrateStatusEl.textContent = "Compass not yet calibrated — keep moving";
+    return;
+  }
+
+  if (acc < 20) {
+    calibrateStatusEl.className = "calibrate-status good";
+    calibrateStatusEl.textContent = `✓ Calibrated (±${Math.round(acc)}°)`;
+    // Auto-close only if we started with poor accuracy and it improved
+    if (calibrateInitialAcc === null || calibrateInitialAcc >= 20 || calibrateInitialAcc < 0) {
+      if (calibrateInterval) {
+        clearInterval(calibrateInterval);
+        calibrateInterval = null;
+        setTimeout(closeCalibration, 1500);
+      }
+    }
+    return;
+  }
+
+  if (acc < 40) {
+    calibrateStatusEl.className = "calibrate-status fair";
+    calibrateStatusEl.textContent = `Fair (±${Math.round(acc)}°) — keep rotating`;
+  } else {
+    calibrateStatusEl.className = "calibrate-status";
+    calibrateStatusEl.textContent = `Poor (±${Math.round(acc)}°) — keep moving in a figure-8`;
+  }
+}
+
+calibrateBtn.addEventListener("click", openCalibration);
+calibrateDoneBtn.addEventListener("click", closeCalibration);
+
 /* ---------- Permission helpers ---------- */
 async function requestMotionPermission() {
   if (typeof DeviceOrientationEvent === "undefined") return false;
@@ -469,6 +651,7 @@ async function start() {
       }
 
       hideOverlay();
+      calibrateBtn.classList.remove("hidden");
 
       if (!motionReceived) {
         setTimeout(() => {
@@ -519,7 +702,7 @@ if ("serviceWorker" in navigator) {
     });
   }
   window.addEventListener("load", () => {
-    navigator.serviceWorker.register("./sw.js?v=5").catch(() => {});
+    navigator.serviceWorker.register("./sw.js?v=6").catch(() => {});
   });
 }
 </script>
